@@ -1,0 +1,12 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    gpx (0.6)
+    libxml-ruby (2.8.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  gpx
+  libxml-ruby
