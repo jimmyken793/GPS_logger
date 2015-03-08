@@ -29,18 +29,68 @@ end
 
 include GPX
 
+def distance loc1, loc2
+	rad_per_deg = Math::PI/180  # PI / 180
+	rkm = 6371                  # Earth radius in kilometers
+	rm = rkm * 1000             # Radius in meters
+
+	dlat_rad = (loc2.lat-loc1.lat) * rad_per_deg  # Delta, converted to rad
+	dlon_rad = (loc2.lon-loc1.lon) * rad_per_deg
+
+	lat1_rad, lon1_rad = [loc1.lat, loc1.lon].map {|i| i * rad_per_deg }
+	lat2_rad, lon2_rad = [loc2.lat, loc2.lon].map {|i| i * rad_per_deg }
+
+	a = Math.sin(dlat_rad/2)**2 + Math.cos(lat1_rad) * Math.cos(lat2_rad) * Math.sin(dlon_rad/2)**2
+	c = 2 * Math::atan2(Math::sqrt(a), Math::sqrt(1-a))
+
+	rm * c # Delta in meters
+end
+
 raw_data = IO.readlines(ARGV[0])
-track = Track.new
-segment = Segment.new
+$tracks = []
+$track = nil
+$segment = nil
+
+def new_track
+	$track = Track.new
+	$segment = Segment.new
+	$track.append_segment($segment)
+	$tracks << $track
+end
+
+
+
+new_track
 raw_data.each{|line|
-	satellites_num, latitude, longitude, hour, minute, second = line.split(/[,: ]+/)
+	time, _, _, latitude, lat_dir, longitude, lon_dir, quality, satellites_num, horizontal_dilution, altitude, heicht_of_geoid, _, _, checksum = line.split(',')
+	satellites_num = satellites_num.to_i
 	if satellites_num.to_i > 0
-		latitude = latitude[0..latitude.length-8].to_i + (latitude[latitude.length-7..-1].to_f / 0.6 / 100)
-		longitude = longitude[0..longitude.length-8].to_i + (longitude[longitude.length-7..-1].to_f / 0.6 / 100)
-		p = TrackPoint.new(:lat => latitude, :lon => longitude, :elevation => 0.0, :time => Time.now)
-		segment.append_point(p)
+		time = Time.at(time.to_i)
+		altitude = altitude.to_f
+		latitude = latitude[0,2].to_f + (latitude[2,latitude.length-2].to_f / 60.0)
+		lat_dir == 'N' ? latitude : -latitude
+		longitude = longitude[0,3].to_f + (longitude[3,longitude.length-2].to_f / 60.0)
+		lon_dir == 'E' ? longitude : -longitude
+
+		puts "#{time}: #{latitude}, #{longitude} : #{altitude}"
+		p = TrackPoint.new(:lat => latitude, :lon => longitude, :elevation => altitude, :time => time)
+		if $segment.latest_point
+			d = distance($segment.latest_point, p)
+			if d > 3000
+				puts "distance: #{d} meters"
+				new_track
+			end
+		end
+		$segment.append_point(p)
+	else
+		# puts "End of segment: #{segment.points.size} points" if !segment.nil?
+		# track = nil
+		# segment = nil
 	end
 }
-track.append_segment(segment)
-gpx_file = GPXFile.new(:tracks => [track])
-gpx_file.write(ARGV[1])
+i=0
+$tracks.each{|track|
+	gpx_file = GPXFile.new(:tracks => [track])
+	gpx_file.write("#{i}_#{ARGV[1]}")
+	i = i + 1
+}
